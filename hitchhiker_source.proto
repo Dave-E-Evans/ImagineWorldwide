@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package hitchhiker_source;
+
+// The contents of a file
+message File {
+  string file_id = 1;
+  string file_name = 2;
+  string type = 3;
+  optional bytes blob = 4;
+}
+
+// The description of a file
+message FileList {
+  string file_id = 1;
+  string file_name = 2;
+}
+
+// For method GetSourceId
+message GetSourceIdRequest {
+}
+
+message GetSourceIdReply {
+  string source_id = 1;
+}
+
+// For method GetDownloads
+message GetDownloadsRequest {
+  string client_id = 1;
+  string destination_id = 2;
+}
+
+message GetDownloadsReply {
+  repeated FileList file_list = 1;
+}
+
+// For method DownloadFile
+message DownloadFileRequest {
+  string client_id = 1;
+  repeated FileList file_list = 2;
+}
+
+message DownloadFileReply {
+  repeated File files = 1;
+}
+
+// For method MarkDelivered
+message MarkDeliveredRequest {
+  string client_id = 1;
+  string destination_id = 2;
+  repeated FileList file_list = 3;
+}
+
+message MarkDeliveredReply {
+}
+
+service HitchhikerSource {
+  rpc GetSourceId (GetSourceIdRequest) returns (GetSourceIdReply) {}
+  rpc GetDownloads (GetDownloadsRequest) returns (GetDownloadsReply) {}
+  rpc DownloadFile (DownloadFileRequest) returns (DownloadFileReply) {}
+  rpc MarkDelivered (MarkDeliveredRequest) returns (MarkDeliveredReply) {}
+}
