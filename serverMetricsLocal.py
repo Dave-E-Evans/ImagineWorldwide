@@ -63,6 +63,11 @@ tl = Timeloop()
 @tl.job(interval=timedelta(seconds=log_path_gc_interval))
 def check_disk_usage():
     # Sum all of the files in the log_path
+    dir_path = os.path.join(log_path, countly_dir, received_dir)
+    if not os.path.exists(dir_path):
+        logging.info(f"Directory {dir_path} does not exist")
+        return
+    
     log_path_size = 0
     for file in os.listdir(os.path.join(log_path, countly_dir, received_dir)):
         try:
