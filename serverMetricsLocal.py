@@ -52,7 +52,7 @@ except Exception as e:
     logging.error(f'Exception: {e}')
     exit(1)
 
-
+# TODO: Evaluate whether more Countly APIs and content need supporting
 PATH_MAP = {"i": countly_dir}
 JSON_VALUES = ["events"]
 
