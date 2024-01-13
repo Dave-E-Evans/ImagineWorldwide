@@ -7,7 +7,7 @@ message File {
   string file_id = 1;
   string file_name = 2;
   string type = 3;
-  optional bytes blob = 4;
+  optional bytes blob = 4; // TODO: Consider using some of the streaming capability of gRPC to handle larger payloads
 }
 
 // The description of a file

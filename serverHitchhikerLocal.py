@@ -1,4 +1,7 @@
 import asyncio
+import hashlib
+import logging
+import os
 
 from grpclib.utils import graceful_exit
 from grpclib.server import Server, Stream
@@ -11,41 +14,178 @@ from hitchhiker_source_pb2 import MarkDeliveredRequest, MarkDeliveredReply
 
 from hitchhiker_source_grpc import HitchhikerSourceBase
 
+# These are the sub-directories within LOG_PATH that represent the state of the file
+received_dir = 'received'
 
 class HitchhikerSource(HitchhikerSourceBase):
+    def __init__(self, source_id, log_path) -> None:
+        super().__init__()
+        self.source_id = source_id
+        self.log_path = log_path
+
     async def DownloadFile(self, stream: Stream[DownloadFileRequest, DownloadFileReply]) -> None:
         request = await stream.recv_message()
         assert request is not None
-        files = [
-            {"file_id": "file_id_1", "file_name": "file_name_1", "type": "file_type_1"},
-            {"file_id": "file_id_2", "file_name": "file_name_2", "type": "file_type_1", "blob": b"\xBA\xAD\xF0\x0D"}
-        ]
+
+        # TODO: What is the purpose of knowing client_id? Perhaps to log this gRPC call?
+        # client_id = request.client_id
+        # assert client_id is not None
+
+        file_list = request.file_list
+        assert file_list is not None
+
+        files = []
+        for file in file_list:
+            file_id = file.file_id
+            file_name = file.file_name
+            assert file_id is not None
+            assert file_name is not None
+
+            try:
+                file_path = os.path.join(self.log_path, received_dir, file_name)
+
+                # Check it exists and is a file
+                if not os.path.isfile(file_path):
+                    logging.warning(f'File {file_path} does not exist')
+                    continue
+
+                # Read the file content and generate an MD5 hash
+                with open(file_path, 'rb') as f:
+                    contents = f.read()
+                    md5_hash = hashlib.md5(contents).hexdigest()
+
+                # Check the MD5 hash matches the file_id
+                if md5_hash != file_id:
+                    logging.warning(f'File {file_path} contents do not match {file_id}')
+                    continue    
+                
+                files.append({"file_id": file_id, "file_name": file_name, "type": "countly", "blob": contents})
+            except Exception as e:
+                print(f'Exception: {e}')
+                continue
+            
+
         await stream.send_message(DownloadFileReply(files=files))
 
     async def GetDownloads(self, stream: Stream[GetDownloadsRequest, GetDownloadsReply]) -> None:
         request = await stream.recv_message()
         assert request is not None
-        file_list = [{"file_id": "file_id_1", "file_name": "file_name_1"}, {"file_id": "file_id_2", "file_name": "file_name_2"}]
+
+        # TODO: What is the purpose of knowing client_id and destination_id? Perhaps...
+        #       * To log which client downloads which files to which destination?
+        #       * To allow many clients to download the same file? This would seem to be at odds with
+        #         the spec that "After a file is MarkDelivered by a client, the file should be deleted."
+        #       Commenting out at the moment, as I have no use for this information.
+        # client_id = request.client_id
+        # destination_id = request.destination_id
+        # assert client_id is not None
+        # assert destination_id is not None
+
+        # Get file list from filesystem
+        file_list = []
+        for file in sorted(os.listdir(os.path.join(self.log_path, received_dir))):
+            try:
+                # Skip unless it is a file
+                if not os.path.isfile(os.path.join(self.log_path, received_dir, file)):
+                    continue
+
+                # Get the name of the file
+                file_name = file
+
+                # MD5 hash the contents of the file as an id
+                with open(os.path.join(self.log_path, received_dir, file), 'rb') as f:
+                    contents = f.read()
+                    md5_hash = hashlib.md5(contents).hexdigest()
+                
+                file_list.append({"file_id": md5_hash, "file_name": file_name})
+            except Exception as e:
+                print(f'Exception: {e}')
+                continue
+
         await stream.send_message(GetDownloadsReply(file_list=file_list))
 
     async def GetSourceId(self, stream: Stream[GetSourceIdRequest, GetSourceIdReply]) -> None:
         request = await stream.recv_message()
         assert request is not None
-        source_id = f'TODO SourceId!'
-        await stream.send_message(GetSourceIdReply(source_id=source_id))
+
+        await stream.send_message(GetSourceIdReply(source_id=self.source_id))
 
     async def MarkDelivered(self, stream: Stream[MarkDeliveredRequest, MarkDeliveredReply]) -> None:
         request = await stream.recv_message()
         assert request is not None
+
+        # TODO: What is the purpose of knowing client_id and destination_id? Perhaps...
+        #       * To log which client downloads which files to which destination?
+        #       * To allow many clients to download the same file? This would seem to be at odds with
+        #         the spec that "After a file is MarkDelivered by a client, the file should be deleted."
+        #       Commenting out at the moment, as I have no use for this information.
+        # client_id = request.client_id
+        # destination_id = request.destination_id
+        # assert client_id is not None
+        # assert destination_id is not None
+
+        file_list = request.file_list
+        assert file_list is not None
+
+        for file in file_list:
+            file_id = file.file_id
+            file_name = file.file_name
+            assert file_id is not None
+            assert file_name is not None
+
+            try:
+                file_path = os.path.join(self.log_path, received_dir, file_name)
+
+                # Check it exists and is a file
+                if not os.path.isfile(file_path):
+                    print(f'File {file_path} does not exist')
+                    continue
+
+                # Read the file content and generate an MD5 hash
+                with open(file_path, 'rb') as f:
+                    contents = f.read()
+                    md5_hash = hashlib.md5(contents).hexdigest()
+
+                # Check the MD5 hash matches the file_id
+                if md5_hash != file_id:
+                    print(f'File {file_path} contents do not match {file_id}')
+                    continue    
+                
+                # Delete the file from the filesystem
+                os.remove(file_path)
+            except Exception as e:
+                print(f'Exception: {e}')
+                continue
+
         await stream.send_message(MarkDeliveredReply())
 
-async def grpc_main(*, host: str = '127.0.0.1', port: int = 3001) -> None:
-    server = Server([HitchhikerSource()])
+async def grpc_main(*, host: str = '127.0.0.1', port: int = 3001, source_id, log_path) -> None:
+    server = Server([HitchhikerSource(source_id=source_id, log_path=log_path)])
     # Note: graceful_exit isn't supported in Windows
     with graceful_exit([server]):
         await server.start(host, port)
-        print(f'Serving on {host}:{port}')
+        logging.info(f'Serving on {host}:{port}')
         await server.wait_closed()
 
 if __name__ == "__main__":
-    asyncio.run(grpc_main())
+    logging.basicConfig(level=logging.INFO)
+
+    port = os.environ.get('PORT', 3001)
+    
+    # This is the id of the site
+    source_id = os.environ.get('SOURCE_ID')
+    if source_id is None:
+        logging.error('SOURCE_ID environment variable is not set!')
+        exit(1)
+    else:
+        logging.info(f'SOURCE_ID: {source_id}')
+
+    # This is where the files are stored
+    log_path = os.environ.get('LOG_PATH')
+    if log_path is None:
+        logging.error('LOG_PATH environment variable is not set!')
+        exit(1)
+    else:
+        logging.info(f'LOG_PATH: {log_path}')
+
+    asyncio.run(grpc_main(port=port, source_id=source_id, log_path=log_path))

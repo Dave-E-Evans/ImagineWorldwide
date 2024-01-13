@@ -1,4 +1,7 @@
 import asyncio
+import logging
+import os
+import sys
 
 from grpclib.client import Channel
 
@@ -7,12 +10,48 @@ from hitchhiker_source_pb2 import DownloadFileRequest, DownloadFileReply
 from hitchhiker_source_grpc import HitchhikerSourceStub
 
 
-async def main():
-    async with Channel('127.0.0.1', 3001) as channel:
+async def main(grpc_host, grpc_port, client_id, file_list):
+    async with Channel(grpc_host, grpc_port) as channel:
         hitchhiker = HitchhikerSourceStub(channel)
 
-        reply = await hitchhiker.DownloadFile(DownloadFileRequest(client_id='clientid_1', file_list=[{"file_id": "file_id_1", "file_name": "file_name_1"}, {"file_id": "file_id_2", "file_name": "file_name_2"}]))
-        print(reply.files)
+        reply = await hitchhiker.DownloadFile(DownloadFileRequest(client_id=client_id, file_list=file_list))
+
+        for file in reply.files:
+            print(f'file_id: {file.file_id}')
+            print(f'file_name: {file.file_name}')
+            print(f'type: {file.type}')
+            if file.blob:
+                try:
+                    print(f'blob (hex): {file.blob.hex()}')
+                    print(f'blob (UTF-8): {file.blob.decode("utf-8")}')
+                except Exception as e:
+                    print()
+                    
+            print()
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    logging.basicConfig(level=logging.INFO)
+
+    # This is the GRPC host that the client will connect to.
+    grpc_host = os.environ.get('GRPC_HOST', '127.0.0.1')
+    grpc_port = int(os.environ.get('GRPC_PORT', '3001'))
+
+    # This is the client id that the server will use to identify the client.
+    client_id = os.environ.get('CLIENT_ID')
+    if client_id is None:
+        logging.error('CLIENT_ID environment variable is not set!')
+        exit(1)
+    else:
+        logging.info(f'CLIENT_ID: {client_id}')
+        
+
+    # Read the desired file list from the command line args
+    if len(sys.argv) == 1 or len(sys.argv) % 2 == 0:
+        print('Usage: python3 grpcDownloadFile.py <file_id_1> <file_name_1> ...')
+        exit(1)
+
+    file_list = []
+    for i in range(1, len(sys.argv), 2):
+        file_list.append({"file_id": sys.argv[i], "file_name": sys.argv[i+1]})
+
+    asyncio.run(main(grpc_host=grpc_host, grpc_port=grpc_port, client_id=client_id, file_list=file_list))

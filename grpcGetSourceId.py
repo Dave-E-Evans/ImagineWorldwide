@@ -1,4 +1,5 @@
 import asyncio
+import os
 
 from grpclib.client import Channel
 
@@ -7,12 +8,17 @@ from hitchhiker_source_pb2 import GetSourceIdRequest, GetSourceIdReply
 from hitchhiker_source_grpc import HitchhikerSourceStub
 
 
-async def main():
-    async with Channel('127.0.0.1', 3001) as channel:
+async def main(grpc_host, grpc_port):
+    async with Channel(grpc_host, grpc_port) as channel:
         hitchhiker = HitchhikerSourceStub(channel)
 
         reply = await hitchhiker.GetSourceId(GetSourceIdRequest())
+        
         print(reply.source_id)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    # This is the GRPC host that the client will connect to.
+    grpc_host = os.environ.get('GRPC_HOST', '127.0.0.1')
+    grpc_port = int(os.environ.get('GRPC_PORT', '3001'))
+
+    asyncio.run(main(grpc_host, grpc_port))
